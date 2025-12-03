@@ -428,7 +428,7 @@
                     paymentMethods: ["UPI", "bKash"],
                     dailyAdLimit: 10,
                     coinValueCoins: 1000,
-                    coinValueInr: 10
+                    coinValueTaka: 10
                 };
             } catch (error) {
                 console.error("Error fetching app config:", error);
@@ -444,7 +444,7 @@
             profileEmailEl.textContent = userData.email || 'No Email';
             referralCodeEl.textContent = userData.referralCode || '...';
             minWithdrawalInfoEl.textContent = `${appConfig.minWithdrawal || 5000} Coins`;
-            coinValueInfoEl.textContent = `${appConfig.coinValueCoins || 1000} Coins = à§³${appConfig.coinValueInr || 10}`;
+            coinValueInfoEl.textContent = `${appConfig.coinValueCoins || 1000} Coins = ₹${appConfig.coinValueTaka || 10}`;
             withdrawMethodSelect.innerHTML = '';
             (appConfig.paymentMethods || []).forEach(method => {
                 const option = document.createElement('option');
