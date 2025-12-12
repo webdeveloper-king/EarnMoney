@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Easy Money Deposit</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <style>
+        /* --- CSS STYLES --- */
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
+        body { background-color: #0b1221; color: white; display: flex; justify-content: center; min-height: 100vh; }
+        .app-container { width: 100%; max-width: 480px; padding: 20px; background-color: #0b1221; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; padding: 10px 0 20px; }
+        
+        .balance-card { background: linear-gradient(135deg, #00ffc3 0%, #00b894 100%); padding: 20px; border-radius: 15px; color: #00332a; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+        .balance-info h1 { font-size: 2rem; margin-top: 5px; }
+        
+        /* Payment Channels */
+        .channel-grid { display: flex; gap: 10px; margin-bottom: 20px; }
+        .channel-item { background: #182235; flex: 1; padding: 15px; border-radius: 10px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: 0.3s; font-size: 0.9rem; }
+        .channel-item.active { border-color: #00ffc3; background: rgba(0, 255, 195, 0.05); }
+        .channel-item i { display: block; font-size: 1.5rem; margin-bottom: 8px; color: #00ffc3; }
+        
+        /* QR Section */
+        .qr-container { text-align: center; margin-bottom: 20px; background: white; padding: 15px; border-radius: 10px; color: black; }
+        
+        /* Amount Buttons */
+        .amount-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
+        .amt-btn { background: #182235; border: 1px solid #2a3b55; color: #fff; padding: 12px; border-radius: 8px; cursor: pointer; }
+        
+        /* Input & Buttons */
+        .input-group { background: #182235; padding: 10px 15px; border-radius: 8px; display: flex; align-items: center; margin-bottom: 20px; }
+        .input-group input { background: transparent; border: none; color: white; font-size: 1.2rem; margin-left: 10px; width: 100%; outline: none; }
+        
+        .deposit-btn { width: 100%; background: #00ffc3; color: #00332a; border: none; padding: 15px; border-radius: 25px; font-size: 1.1rem; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+        .verify-btn { width: 100%; background: transparent; color: #00ffc3; border: 1px solid #00ffc3; padding: 12px; border-radius: 25px; font-size: 1rem; cursor: pointer; }
+        
+        /* History */
+        .history-item { background: #121a2b; padding: 10px; margin-bottom: 8px; border-radius: 8px; display: flex; justify-content: space-between; font-size: 0.9rem; align-items: center;}
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+        .badge-Pending { background: #5a4b18; color: #ffc107; } 
+        .badge-Success { background: #185a36; color: #28a745; } 
+        .badge-Rejected { background: #5a1818; color: #dc3545; }
+
+        /* Modals */
+        .hidden { display: none !important; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: #182235; padding: 25px; border-radius: 15px; width: 90%; max-width: 350px; text-align: center; border: 1px solid #2a3b55; }
+        .modal-content input { width: 100%; padding: 12px; margin: 15px 0; border-radius: 5px; border: none; font-size: 1rem; }
+
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <header>
+        <i class="fas fa-chevron-left"></i>
+        <h2>Add Funds</h2>
+        <i class="fas fa-history"></i>
+    </header>
+
+    <div class="balance-card">
+        <div class="balance-info">
+            <span>Balance</span>
+            <h1 id="userBalance">Loading...</h1>
+        </div>
+        <i class="fas fa-wallet" style="font-size: 2.5rem; opacity: 0.8;"></i>
+    </div>
+
+    <div class="channel-grid">
+        <div class="channel-item active" id="btn-upi" onclick="selectMethod('upi_qr')">
+            <i class="fas fa-qrcode"></i> <span>QR Pay</span>
+        </div>
+        <div class="channel-item" id="btn-razor" onclick="selectMethod('razorpay')">
+            <i class="fas fa-bolt"></i> <span>Razorpay</span>
+        </div>
+        <div class="channel-item" id="btn-payu" onclick="selectMethod('payu')">
+            <i class="fas fa-credit-card"></i> <span>PayU</span>
+        </div>
+    </div>
+
+    <div id="qr-section" class="qr-container hidden">
+        <p style="margin-bottom:10px; font-weight:bold;">Scan & Pay</p>
+        <img id="qrImage" src="https://via.placeholder.com/150?text=Select+Amount" alt="QR Code" width="150">
+        <p id="upiIdDisplay" style="margin-top:10px; font-size:0.9rem; color:#333; word-break: break-all;">Loading...</p>
+    </div>
+
+    <div class="amount-grid">
+        <button class="amt-btn" onclick="setAmount(100)">₹ 100</button>
+        <button class="amt-btn" onclick="setAmount(500)">₹ 500</button>
+        <button class="amt-btn" onclick="setAmount(1000)">₹ 1000</button>
+    </div>
+
+    <div class="input-group">
+        <span>₹</span>
+        <input type="number" id="customAmount" placeholder="Enter Amount" onkeyup="updateQR()">
+    </div>
+
+    <button class="deposit-btn" onclick="initiateDeposit()">Deposit Now</button>
+    
+    <button class="verify-btn" onclick="openUtrModal()">Already Paid? Verify Payment</button>
+
+    <h3 style="margin: 20px 0 10px; font-size: 1rem; color: #889bb5;">Recent Transactions</h3>
+    <div id="historyList">
+        <p style="text-align:center; color:#555; font-size:0.8rem;">Loading...</p>
+    </div>
+</div>
+
+<div id="utrModal" class="modal hidden">
+    <div class="modal-content">
+        <h3>Verify Payment</h3>
+        <p style="color:#aaa; font-size:0.9rem; margin-top:5px;">Enter UTR / Ref No from your payment app.</p>
+        <input type="text" id="utrInput" placeholder="Ex: 345678901234">
+        <div style="display:flex; gap:10px;">
+            <button class="deposit-btn" onclick="closeModal('utrModal')" style="background:#333; color:white;">Cancel</button>
+            <button class="deposit-btn" onclick="submitUTR()">Submit</button>
+        </div>
+    </div>
+</div>
+
+<div id="alertModal" class="modal hidden">
+    <div class="modal-content">
+        <i class="fas fa-exclamation-circle" style="font-size: 3rem; color: #ff6b6b; margin-bottom: 10px;"></i>
+        <h3 id="alertTitle">Alert</h3>
+        <p id="alertMsg" style="color:#aaa; font-size:0.9rem; margin:10px 0 20px;">Message goes here</p>
+        <button class="deposit-btn" onclick="closeModal('alertModal')">Okay</button>
+    </div>
+</div>
+
+<form action="https://test.payu.in/_payment" method="post" id="payuForm" style="display: none;">
+    <input type="hidden" name="key" id="payu_key" value="" />
+    <input type="hidden" name="txnid" id="payu_txnid" value="" />
+    <input type="hidden" name="productinfo" value="Wallet Recharge" />
+    <input type="hidden" name="amount" id="payu_amount" value="" />
+    <input type="hidden" name="email" value="user@test.com" />
+    <input type="hidden" name="firstname" value="User" />
+    <input type="hidden" name="surl" value="http://localhost/success" /> 
+    <input type="hidden" name="furl" value="http://localhost/failed" /> 
+    <input type="hidden" name="hash" id="payu_hash" value="" />
+</form>
+
+<script>
+    // --- FIREBASE CONFIG (SAME AS BEFORE) ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBXwi0YDFikKHiuWsAAMacOTpaSdGkZfA8",
+      authDomain: "easymoney-9afa0.firebaseapp.com",
+      projectId: "easymoney-9afa0",
+      storageBucket: "easymoney-9afa0.firebasestorage.app",
+      messagingSenderId: "586042484280",
+      appId: "1:586042484280:web:29ed29dfc8d01d0fc168cd"
+    };
+
+    let db;
+    let paymentSettings = {};
+    const userID = "user_001"; 
+    let currentMethod = 'upi_qr';
+
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        initApp();
+    } catch (error) { console.error(error); }
+
+    function initApp() {
+        // Load Settings
+        db.collection("settings").doc("payment").onSnapshot((doc) => {
+            if(doc.exists) {
+                paymentSettings = doc.data();
+                document.getElementById("upiIdDisplay").innerText = "UPI: " + (paymentSettings.upi_id || "Loading...");
+                updateQR();
+            }
+        });
+
+        // Load Balance
+        db.collection("users").doc(userID).onSnapshot((doc) => {
+            document.getElementById("userBalance").innerText = doc.exists ? "₹ " + doc.data().balance.toFixed(2) : "₹ 0.00";
+        });
+
+        // Load History
+        db.collection("transactions").where("userId", "==", userID).onSnapshot((snapshot) => {
+            const list = document.getElementById("historyList");
+            if(snapshot.empty) { list.innerHTML = '<p style="text-align:center; color:#555;">No transactions.</p>'; return; }
+            
+            let txns = [];
+            snapshot.forEach(doc => txns.push(doc.data()));
+            txns.sort((a, b) => b.timestamp - a.timestamp);
+
+            list.innerHTML = "";
+            txns.slice(0, 10).forEach((data) => {
+                const dateStr = new Date(data.timestamp).toLocaleDateString();
+                list.innerHTML += `
+                    <div class="history-item">
+                        <div>
+                            <div style="font-weight:bold;">₹${data.amount}</div>
+                            <div style="font-size:0.75rem; color:#889bb5;">${dateStr} • ${data.method}</div>
+                        </div>
+                        <span class="status-badge badge-${data.status}">${data.status}</span>
+                    </div>`;
+            });
+        });
+    }
+
+    // --- UI FUNCTIONS ---
+    window.selectMethod = function(method) {
+        currentMethod = method;
+        document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+        
+        if (method === 'upi_qr') {
+            document.getElementById('btn-upi').classList.add('active');
+            document.getElementById('qr-section').classList.remove('hidden');
+        } else if (method === 'razorpay') {
+            document.getElementById('btn-razor').classList.add('active');
+            document.getElementById('qr-section').classList.add('hidden');
+        } else if (method === 'payu') {
+            document.getElementById('btn-payu').classList.add('active');
+            document.getElementById('qr-section').classList.add('hidden');
+        }
+    };
+
+    window.setAmount = function(amount) {
+        document.getElementById('customAmount').value = amount;
+        updateQR();
+    };
+
+    window.updateQR = function() {
+        const amount = document.getElementById('customAmount').value || 0;
+        if(paymentSettings.upi_id) {
+            const qrData = `upi://pay?pa=${paymentSettings.upi_id}&pn=EasyMoney&am=${amount}&cu=INR`;
+            document.getElementById("qrImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}`;
+        }
+    };
+
+    // --- MAIN DEPOSIT LOGIC ---
+    window.initiateDeposit = function() {
+        const val = document.getElementById('customAmount').value;
+
+        // 1. Check Empty Input -> Show Custom Popup
+        if (!val || val <= 0) {
+            showAlert("Invalid Amount", "Please enter a valid amount to deposit.");
+            return;
+        }
+
+        // 2. Logic based on Method
+        if (currentMethod === 'upi_qr') {
+            // Redirect to UPI Apps
+            const upiLink = `upi://pay?pa=${paymentSettings.upi_id}&pn=EasyMoney&am=${val}&cu=INR`;
+            window.location.href = upiLink; 
+        } 
+        else if (currentMethod === 'razorpay') {
+            startRazorpay(val);
+        } 
+        else if (currentMethod === 'payu') {
+            startPayU(val);
+        }
+    };
+
+    // --- HELPER FUNCTIONS ---
+    function showAlert(title, msg) {
+        document.getElementById('alertTitle').innerText = title;
+        document.getElementById('alertMsg').innerText = msg;
+        document.getElementById('alertModal').classList.remove('hidden');
+    }
+
+    window.closeModal = function(id) {
+        document.getElementById(id).classList.add('hidden');
+    };
+
+    window.openUtrModal = function() {
+        document.getElementById('utrModal').classList.remove('hidden');
+    };
+
+    window.submitUTR = function() {
+        const utr = document.getElementById('utrInput').value;
+        const amount = parseFloat(document.getElementById('customAmount').value);
+        if (!utr || utr.length < 4) {
+            showAlert("Invalid UTR", "Please enter a valid Transaction ID.");
+            return;
+        }
+        
+        // Add to Firebase as Pending
+        db.collection("transactions").add({
+            userId: userID,
+            amount: amount || 0, // 0 if they verify without amount input, careful here
+            method: "QR Pay (Manual)",
+            utr: utr,
+            status: "Pending",
+            timestamp: Date.now()
+        }).then(() => {
+            showAlert("Success", "Verification submitted! Admin will approve shortly.");
+            closeModal('utrModal');
+            document.getElementById('utrInput').value = "";
+        });
+    };
+
+    // --- GATEWAY LOGIC ---
+    function startRazorpay(amount) {
+        if(!paymentSettings.razorpay_key) return showAlert("Error", "Razorpay Key not set by Admin.");
+        
+        var options = {
+            "key": paymentSettings.razorpay_key,
+            "amount": amount * 100,
+            "currency": "INR",
+            "name": "Deposit Funds",
+            "handler": function (response) {
+                // Success Callback
+                db.collection("transactions").add({
+                    userId: userID, amount: parseFloat(amount), method: "Razorpay",
+                    utr: response.razorpay_payment_id, status: "Success", timestamp: Date.now()
+                }).then(() => {
+                    db.collection("users").doc(userID).update({
+                        balance: firebase.firestore.FieldValue.increment(parseFloat(amount))
+                    });
+                    showAlert("Success", "Payment Successful!");
+                });
+            },
+            "theme": { "color": "#00ffc3" }
+        };
+        new Razorpay(options).open();
+    }
+
+    function startPayU(amount) {
+        if(!paymentSettings.payu_key) return showAlert("Error", "PayU Key not set by Admin.");
+        
+        // Populate form and submit
+        const txnid = "TXN" + new Date().getTime();
+        document.getElementById("payu_key").value = paymentSettings.payu_key;
+        document.getElementById("payu_txnid").value = txnid;
+        document.getElementById("payu_amount").value = amount;
+        
+        showAlert("Redirecting", "Redirecting to PayU Secure Gateway...");
+        // In real app: Fetch hash from server, then submit form
+        // document.getElementById("payuForm").submit();
+    }
+</script>
+
+</body>
+</html>
